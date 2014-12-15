@@ -383,6 +383,30 @@ variant_object client_impl::blockchain_get_info()const
    return info;
 }
 
+map<address, share_type>  client_impl::blockchain_compute_snapshot()const
+{
+    auto snapshot = _chain_db->compute_snapshot();
+    share_type total = 0;
+    for (auto pair : snapshot)
+    {
+        total += pair.second;
+    }
+    ulog("Total: ${tot}", ("tot", total));
+    return snapshot;
+}
+
+map<address, share_type>  client_impl::blockchain_compute_claimed_snapshot()const
+{
+    auto snapshot = _chain_db->compute_claimed_snapshot();
+    share_type total = 0;
+    for (auto pair : snapshot)
+    {
+        total += pair.second;
+    }
+    ulog("Total: ${tot}", ("tot", total));
+    return snapshot;
+}
+
 asset client_impl::blockchain_calculate_supply( const string& asset )const
 {
    asset_id_type asset_id;

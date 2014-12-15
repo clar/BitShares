@@ -3,6 +3,24 @@
   "methods" :
     [
       {
+        "method_name": "blockchain_compute_snapshot",
+        "description": "",
+        "return_type": "snapshot_map",
+        "parameters" : [],
+        "is_const"   : true,
+        "prerequisites" : ["no_prerequisites"],
+        "aliases" : []
+      },
+       {
+        "method_name": "blockchain_compute_claimed_snapshot",
+        "description": "",
+        "return_type": "snapshot_map",
+        "parameters" : [],
+        "is_const"   : true,
+        "prerequisites" : ["no_prerequisites"],
+        "aliases" : []
+      },
+      {
         "method_name": "blockchain_get_info",
         "description": "Returns current blockchain information and parameters",
         "return_type": "json_object",

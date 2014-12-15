@@ -749,6 +749,11 @@
         "type_name" : "edge_array",
         "container_type": "array",
         "contained_type": "edge_record"
+      },
+      {
+        "type_name" : "snapshot_map",
+        "cpp_return_type" : "std::map<bts::blockchain::address, bts::blockchain::share_type>"
+        "cpp_include_file" : "bts/blockchain/types.hpp"
       }
     ]
 }

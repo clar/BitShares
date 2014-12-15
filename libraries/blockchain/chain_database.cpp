@@ -3426,6 +3426,219 @@ namespace bts { namespace blockchain {
        return my->_feed_db.fetch_optional( i );
    }
 
+
+   map<address, share_type> chain_database::compute_snapshot(const asset_id_type& asset_id)const
+   {
+       const oasset_record record = get_asset_record(asset_id);
+       FC_ASSERT(record.valid());
+
+       auto snapshot = map<address, share_type>();
+       share_type total = 0;
+
+       auto asset_snapshots = map<asset_id_type, map<address, share_type>>();
+
+       // 1. normal balance records
+       for (auto balance_itr = my->_balance_db.begin(); balance_itr.valid(); ++balance_itr)
+       {
+           const balance_record balance = balance_itr.value();
+
+           if (asset_id != balance.asset_id() )
+               continue;
+
+           snapshot[balance.id()] += balance.balance;
+           total += balance.balance;
+       }
+
+       // 2. ask balance        
+       for (auto ask_itr = my->_ask_db.begin(); ask_itr.valid(); ++ask_itr)
+       {
+           const market_index_key market_index = ask_itr.key();
+
+           if (asset_id != market_index.order_price.base_asset_id)
+               continue;
+
+           const order_record ask = ask_itr.value();
+           const auto owner = market_index.owner;
+
+           snapshot[owner] += ask.balance;
+           total += ask.balance;
+       }
+
+       if (asset_id != asset_id_type(0)) // If non-base asset
+       {
+           //  3. bid balances
+           for (auto bid_itr = my->_bid_db.begin(); bid_itr.valid(); ++bid_itr)
+           {
+               const market_index_key market_index = bid_itr.key();
+               if (market_index.order_price.quote_asset_id == asset_id)
+               {
+                   const order_record bid = bid_itr.value();
+                   const auto owner = market_index.owner;
+
+                   snapshot[owner] += bid.balance;
+                   total += bid.balance;
+               }
+           }
+           return snapshot;
+       }
+
+       // If base asset
+       // 3. short balances
+       for (auto short_itr = my->_short_db.begin(); short_itr.valid(); ++short_itr)
+       {
+           const market_index_key market_index = short_itr.key();
+           const order_record sh = short_itr.value();
+           const auto owner = market_index.owner;
+
+           snapshot[owner] += sh.balance;
+
+           total += sh.balance;
+       }
+
+       // 4. pay balances
+       for (auto account_itr = my->_account_db.begin(); account_itr.valid(); ++account_itr)
+       {
+           const account_record account = account_itr.value();
+           const address owner = account.active_address();
+
+           if (account.delegate_info.valid()){
+
+               snapshot[owner] += account.delegate_info->pay_balance;
+
+               total += account.delegate_info->pay_balance;
+           }
+       }
+
+       // 5. collateral balances
+       // there are totally 3x collaterals for each 1x asset.
+       //       2x will be added to shorter's account
+       //       1x will be added to longer's account ( all 1x collaterals will be collected together, and then distributed equally)
+       //
+       // more details, please refer: blabla...
+
+       auto asset_collateral = map<asset_id_type, share_type>();
+       //oprice feed_price =  this->get_median_delegate_price(_quote_id, _base_id);
+
+       // to cache the feed_price
+       auto market_prices = map<pair<asset_id_type, asset_id_type>, oprice>();
+
+       for (auto collateral_itr = my->_collateral_db.begin(); collateral_itr.valid(); ++collateral_itr)
+       {
+           const market_index_key market_index = collateral_itr.key();
+           const collateral_record collateral = collateral_itr.value();
+           const auto owner = market_index.owner;
+
+           const auto quote_asset_id = market_index.order_price.quote_asset_id;
+           const auto base_asset_id = market_index.order_price.base_asset_id;
+
+           oprice feed_price;
+           if (market_prices.find(std::make_pair(quote_asset_id, base_asset_id)) == market_prices.end())
+           {
+               feed_price = this->get_median_delegate_price(quote_asset_id, base_asset_id);
+               market_prices[std::make_pair(quote_asset_id, base_asset_id)] = feed_price;
+           }
+           else
+           {
+               feed_price = market_prices[std::make_pair(quote_asset_id, base_asset_id)];
+           }
+           FC_ASSERT(feed_price.valid());
+
+           const asset principle = asset(collateral.payoff_balance, quote_asset_id);
+           const asset base_asset_to_cover = principle * (*feed_price);
+
+           FC_ASSERT(collateral.collateral_balance >= base_asset_to_cover.amount);
+
+           snapshot[owner] += (collateral.collateral_balance - base_asset_to_cover.amount);
+
+           asset_collateral[quote_asset_id] += base_asset_to_cover.amount;
+
+           total += collateral.collateral_balance;
+       }
+
+       for (auto collateral_pair : asset_collateral)
+       {
+           const asset_id_type quote_asset_id = collateral_pair.first;
+           const share_type total_collateral = collateral_pair.second;
+           share_type total_amount = 0;
+           share_type total_collateral_assigned = 0;
+
+           // TODO: get non-base snapshot is too slow, can be done in one loop.
+           auto asset_snapshot = compute_snapshot(quote_asset_id);
+
+           for (auto snapshot_pair : asset_snapshot)
+           {
+               total_amount += snapshot_pair.second;
+           }
+
+           float r = total_collateral*1.0 / total_amount;
+           for (auto snapshot_pair : asset_snapshot)
+           {
+               address owner = snapshot_pair.first;
+               share_type amount = snapshot_pair.second;
+
+               snapshot[owner] += amount * r;
+
+               total_collateral_assigned += amount * r;
+           }
+
+       }
+
+       return snapshot;
+   }
+
+   map<address, share_type> chain_database::compute_snapshot()const
+   {
+       asset_id_type asset_id  = get_asset_id("BTS");
+
+       auto snapshot = compute_snapshot(asset_id);
+
+       return snapshot;
+   }
+
+   map<address, share_type> chain_database::compute_claimed_snapshot()const
+   {
+       auto snapshot = map<address, share_type>();
+       // normal balances
+       for (auto balance_itr = my->_balance_db.begin(); balance_itr.valid(); ++balance_itr)
+       {
+           const balance_record balance = balance_itr.value();
+           //if (!balance.genesis_info.valid())
+           {
+               if (snapshot.find(balance.id()) != snapshot.end())
+                   snapshot[balance.id()] += balance.get_spendable_balance(this->now()).amount;
+               else
+                   snapshot[balance.id()] = balance.get_spendable_balance(this->now()).amount;
+           }
+       }
+
+       // pay balances
+       for (auto account_itr = my->_account_db.begin(); account_itr.valid(); ++account_itr)
+       {
+           const account_record account = account_itr.value();
+           if (account.delegate_info.valid())
+           {
+               auto address = account.active_address();
+
+               if (snapshot.find(address) != snapshot.end())
+                   snapshot[address] += account.delegate_info->pay_balance;
+               else
+                   snapshot[address] = account.delegate_info->pay_balance;
+
+           }
+       }
+
+       for (auto it = snapshot.begin(); it != snapshot.end();)
+       {
+           if (it->second == 0)
+           {
+               snapshot.erase(it++);
+           }
+           else
+               it++;
+       }
+       return snapshot;
+   }
+
    asset chain_database::calculate_supply( const asset_id_type& asset_id )const
    {
        const auto record = get_asset_record( asset_id );
