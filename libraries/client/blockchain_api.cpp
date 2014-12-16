@@ -392,6 +392,21 @@ map<address, share_type>  client_impl::blockchain_compute_snapshot()const
         total += pair.second;
     }
     ulog("Total: ${tot}", ("tot", total));
+    
+    auto asset_records = _chain_db->get_assets( "", -1 );
+    for (auto itr = asset_records.begin(); itr!= asset_records.end(); itr++)
+    {
+        if (itr->is_market_issued()) {
+            
+            auto omedian_price = _chain_db->get_median_delegate_price(itr->id, asset_id_type( 0 ));
+            double pretty_price = 0.0;
+            if( omedian_price )
+                pretty_price = _chain_db->to_pretty_price_double( *omedian_price );
+            
+            ulog("${name} : ${price}", ("name", itr->name)("price", pretty_price));
+        }
+    }
+    
     return snapshot;
 }
 
