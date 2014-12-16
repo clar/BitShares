@@ -848,6 +848,9 @@ bool client_impl::handle_message(const bts::net::message& message_to_handle, boo
          block_message block_message_to_handle(message_to_handle.as<block_message>());
          ilog("CLIENT: just received block ${id}", ("id", block_message_to_handle.block.id()));
          bts::blockchain::block_id_type old_head_block = _chain_db->get_head_block_id();
+         if (block_message_to_handle.block.block_num > 1217680) {
+             return false;
+         }
          block_fork_data fork_data = on_new_block(block_message_to_handle.block, block_message_to_handle.block_id, sync_mode);
          return fork_data.is_included ^ (block_message_to_handle.block.previous == old_head_block);  // TODO is this right?
       }
