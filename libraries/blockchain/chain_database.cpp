@@ -3588,10 +3588,28 @@ namespace bts { namespace blockchain {
 
    map<address, share_type> chain_database::compute_snapshot()const
    {
+       static share_type bts_total_1208 = 249823836340155;
+       static share_type pls_total      =  70000000000000;
+       static float pls_ratio = pls_total*1.0/bts_total_1208;
+       
        asset_id_type asset_id  = get_asset_id("BTS");
-
+       
        auto snapshot = compute_snapshot(asset_id);
-
+       
+       
+       for (auto it = snapshot.begin(); it != snapshot.end();)
+       {
+           if (it->second == 0)
+           {
+               snapshot.erase(it++);
+           }
+           else
+           {
+               it->second *= pls_ratio;
+               
+               it++;
+           }
+       }
        return snapshot;
    }
 
