@@ -18,8 +18,13 @@ namespace bts { namespace blockchain {
    bool transaction_evaluation_state::verify_authority( const multisig_meta_info& siginfo )
    {
       uint32_t sig_count = 0;
+      ilog("@n verifying authority");
       for( const auto item : siginfo.owners )
+      {
          sig_count += check_signature( item );
+         ilog("@n sig_count: ${s}", ("s", sig_count));
+      }
+      ilog("@n required: ${s}", ("s", siginfo.required));
       return sig_count >= siginfo.required;
    }
 
@@ -31,11 +36,9 @@ namespace bts { namespace blockchain {
    bool transaction_evaluation_state::check_multisig( const multisig_condition& condition )const
    { try {
 
-      if( _skip_signature_check )
-          return true;
       auto valid = 0;
       for( auto addr : condition.owners )
-          if( signed_keys.find( addr) != signed_keys.end() )
+          if( check_signature( addr ) )
               valid++;
       return valid >= condition.required;
 
@@ -203,9 +206,19 @@ namespace bts { namespace blockchain {
 
         auto trx_id = trx_arg.id();
 
-        if( _current_state->is_known_transaction( trx_arg.expiration, trx_arg.digest( _chain_id ) ) )
-          if (_current_state->get_head_block_num() >= FORK_25)
-            FC_CAPTURE_AND_THROW( duplicate_transaction, (trx_id) );
+        if( _current_state->get_head_block_num() >= BTS_V0_4_26_FORK_BLOCK_NUM )
+        {
+            if( _current_state->is_known_transaction( trx_arg.expiration, trx_arg.digest( _chain_id ) ) )
+            {
+                auto current_trx = _current_state->get_transaction( trx_arg.id() );
+                if( current_trx )
+                   FC_CAPTURE_AND_THROW( duplicate_transaction, (trx_id)(current_trx) );
+                else
+                {
+                   elog( "WARNING: unable to find existing transaction, false positive" );
+                }
+            }
+        }
 
         trx = trx_arg;
         if( !_skip_signature_check )

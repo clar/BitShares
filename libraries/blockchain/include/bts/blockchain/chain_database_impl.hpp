@@ -133,8 +133,8 @@ namespace bts { namespace blockchain {
             signed_block_header                                                         _head_block_header;
             block_id_type                                                               _head_block_id;
 
-            bts::db::level_map<transaction_id_type, signed_transaction>                 _pending_transaction_db;
-            std::map<fee_index, transaction_evaluation_state_ptr>                       _pending_fee_index;
+            bts::db::level_map<digest_type, signed_transaction>                         _pending_transaction_db;
+            std::map<fee_index, transaction_evaluation_state_ptr>                          _pending_fee_index;
 
             bts::db::cached_level_map<asset_id_type, asset_record>                      _asset_db;
             bts::db::cached_level_map<string, asset_id_type>                            _symbol_index_db;
@@ -162,8 +162,10 @@ namespace bts { namespace blockchain {
 
 
             bts::db::level_map<object_id_type, object_record>                           _object_db;
-            bts::db::level_map<edge_index_key, object_id_type>                          _edge_index;
-            bts::db::level_map<edge_index_key, object_id_type>                          _reverse_edge_index;
+            bts::db::level_map<edge_index_key, object_id_type/*edge id*/>               _edge_index;
+            bts::db::level_map<edge_index_key, object_id_type/*edge id*/>               _reverse_edge_index;
+
+            bts::db::level_map<string, site_record>                                     _site_index;
 
             /**
              *  This index is to facilitate light weight clients and is intended mostly for
@@ -178,6 +180,8 @@ namespace bts { namespace blockchain {
             bts::db::cached_level_map<market_history_key, market_history_record>        _market_history_db;
 
             std::map<operation_type_enum, std::deque<operation>>                        _recent_operations;
+
+            bool _track_stats = true;
       };
   } // end namespace bts::blockchain::detail
 } } // end namespace bts::blockchain

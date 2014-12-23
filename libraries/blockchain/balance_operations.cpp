@@ -104,7 +104,7 @@ namespace bts { namespace blockchain {
        if( this->amount <= 0 )
           FC_CAPTURE_AND_THROW( negative_deposit, (amount) );
 
-       if( eval_state._current_state->get_head_block_num() >= BTS_V0_4_26_FORK_BLOCK_NUM )
+       if( eval_state._current_state->get_head_block_num() >= BTS_V0_4_28_FORK_BLOCK_NUM )
        {
            switch( withdraw_condition_types( this->condition.type ) )
            {
@@ -151,7 +151,7 @@ namespace bts { namespace blockchain {
 
        auto asset_rec = eval_state._current_state->get_asset_record( cur_record->condition.asset_id );
 
-       if( eval_state._current_state->get_head_block_num() >= BTS_V0_4_26_FORK_BLOCK_NUM )
+       if( eval_state._current_state->get_head_block_num() >= BTS_V0_4_28_FORK_BLOCK_NUM )
        {
            if( asset_rec->is_market_issued() ) FC_ASSERT( cur_record->condition.slate_id == 0 );
        }
@@ -329,10 +329,7 @@ namespace bts { namespace blockchain {
 
    void release_escrow_operation::evaluate( transaction_evaluation_state& eval_state )
    { try {
-#ifndef WIN32
-#warning [SOFTFORK] Remove this check after BTS_V0_4_27_FORK_BLOCK_NUM has passed
-#endif
-      FC_ASSERT( eval_state._current_state->get_head_block_num() >= BTS_V0_4_27_FORK_BLOCK_NUM );
+      FC_ASSERT( !"This operation is not enabled yet!" );
 
       auto escrow_balance_record = eval_state._current_state->get_balance_record( this->escrow_id );
       FC_ASSERT( escrow_balance_record.valid() );
@@ -475,10 +472,7 @@ namespace bts { namespace blockchain {
 
    void update_balance_vote_operation::evaluate( transaction_evaluation_state& eval_state )
    { try {
-#ifndef WIN32
-#warning [SOFTFORK] Remove this check after BTS_V0_4_27_FORK_BLOCK_NUM has passed
-#endif
-      FC_ASSERT( eval_state._current_state->get_head_block_num() >= BTS_V0_4_27_FORK_BLOCK_NUM );
+      FC_ASSERT( !"This operation is not enabled yet!" );
 
       auto current_balance_record = eval_state._current_state->get_balance_record( this->balance_id );
       FC_ASSERT( current_balance_record.valid(), "No such balance!" );
@@ -514,6 +508,7 @@ namespace bts { namespace blockchain {
 
       if( this->new_restricted_owner.valid() && (this->new_restricted_owner != new_restricted_owner) )
       {
+          ilog("@n new restricted owner specified and its not the existing one");
           for( const auto& owner : current_balance_record->owners() ) //eventually maybe multisig can delegate vote
           {
               if( !eval_state.check_signature( owner ) )
@@ -522,21 +517,27 @@ namespace bts { namespace blockchain {
           new_restricted_owner = this->new_restricted_owner;
           new_slate = this->new_slate;
       }
-      else // this->new_restricted_owner == new_restricted_owner
+      else // NOT this->new_restricted_owner.valid() || (this->new_restricted_owner == new_restricted_owner)
       {
           auto restricted_owner = current_balance_record->restricted_owner;
           /*
           FC_ASSERT( restricted_owner.valid(),
                      "Didn't specify a new restricted owner, but one currently exists." );
                      */
-          ilog( "now: ${secs}", ("secs", eval_state._current_state->now().sec_since_epoch()) );
-          ilog( "last update: ${secs}", ("secs", last_update_secs ) );
+          ilog( "@n now: ${secs}", ("secs", eval_state._current_state->now().sec_since_epoch()) );
+          ilog( "@n last update: ${secs}", ("secs", last_update_secs ) );
           FC_ASSERT( eval_state._current_state->now().sec_since_epoch() - last_update_secs
                      >= BTS_BLOCKCHAIN_VOTE_UPDATE_PERIOD_SEC,
                      "You cannot update your vote this frequently with only the voting key!" );
 
-          if( !eval_state.check_signature( *restricted_owner ) )
-              FC_CAPTURE_AND_THROW( missing_signature, (restricted_owner) );
+          if( NOT eval_state.check_signature( *restricted_owner ) )
+          {
+              for( const auto& owner : current_balance_record->owners() ) //eventually maybe multisig can delegate vote
+              {
+                  if( NOT eval_state.check_signature( owner ) )
+                      FC_CAPTURE_AND_THROW( missing_signature, (owner) );
+              }
+          }
           new_slate = this->new_slate;
       }
 

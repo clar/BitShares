@@ -1,9 +1,9 @@
 #include <bts/client/client.hpp>
 #include <bts/client/client_impl.hpp>
 #include <bts/utilities/key_conversion.hpp>
+#include <bts/utilities/words.hpp>
 #include <bts/wallet/config.hpp>
 #include <bts/wallet/exceptions.hpp>
-#include <bts/wallet/words.hpp>
 #include <fc/network/resolve.hpp>
 #include <fc/network/url.hpp>
 #include <fc/network/http/connection.hpp>
@@ -387,7 +387,7 @@ transaction_builder detail::client_impl::wallet_withdraw_from_address(
                                                     const string& to,
                                                     const vote_selection_method& vote_method,
                                                     bool sign,
-                                                    const string& builder_path )const
+                                                    const string& builder_path )
 {
     address to_address;
     try {
@@ -403,7 +403,10 @@ transaction_builder detail::client_impl::wallet_withdraw_from_address(
     builder->deposit_to_balance( to_address, ugly_asset, vote_method );
     builder->finalize( false );
     if( sign )
+    {
         builder->sign();
+        network_broadcast_transaction( builder->transaction_record.trx );
+    }
     _wallet->write_latest_builder( *builder, builder_path );
     return *builder;
 }
@@ -543,12 +546,16 @@ transaction_builder detail::client_impl::wallet_object_transfer(
 
 vector<object_record> detail::client_impl::wallet_object_list( const string& account )
 { try {
+    ilog("@n called wallet_object_list");
     vector<object_record> ret;
     const auto pending_state = _chain_db->get_pending_state();
     const auto acct_keys = _wallet->get_public_keys_in_account( account );
     const auto scan_object = [&]( const object_record& obj )
     {
-        for( auto owner : pending_state->get_object_owners( obj ).owners )
+        ilog("@n scan_object callback for object: ${o}", ("o", obj));
+        auto condition = pending_state->get_object_condition( obj );
+        ilog("@n condition is: ${c}", ("c", condition));
+        for( auto owner : condition.owners )
         {
             for( auto key : acct_keys )
             {

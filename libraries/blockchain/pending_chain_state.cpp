@@ -98,7 +98,7 @@ namespace bts { namespace blockchain {
       return prev_state->get_transaction( trx_id, exact );
    }
 
-   bool pending_chain_state::is_known_transaction( fc::time_point_sec exp, const digest_type& id )
+   bool pending_chain_state::is_known_transaction( const fc::time_point_sec& exp, const digest_type& id )const
    { try {
       auto itr = unique_transactions.find( id );
       if( itr != unique_transactions.end() ) return true;
@@ -115,8 +115,8 @@ namespace bts { namespace blockchain {
       {
          auto prop = prev_state->get_property(chain_id);
          auto insert_result = unique_transactions.insert(rec.trx.digest( prop.as<digest_type>() ));
-         if (get_head_block_num()  >= FORK_25)
-           FC_ASSERT(insert_result.second, "duplicate transaction error");
+         if( get_head_block_num() >= BTS_V0_4_26_FORK_BLOCK_NUM )
+           FC_ASSERT( insert_result.second, "duplicate transaction error" );
       }
 
       for( const auto& op : rec.trx.operations )
@@ -242,7 +242,7 @@ namespace bts { namespace blockchain {
       }
       for( const auto& item : objects )
       {
-         undo_state->store_object_record( object_record( item.first ) );
+         undo_state->store_object_record( item.second );
       }
 
       const auto dirty_markets = prev_state->get_dirty_markets();
@@ -387,7 +387,7 @@ namespace bts { namespace blockchain {
        chain_interface_ptr prev_state = _prev_state.lock();
        auto itr = objects.find( id );
        if( itr != objects.end() )
-           return oobject_record(itr->second);
+           return itr->second;
        else if( prev_state )
            return prev_state->get_object_record( id );
         return oobject_record();
@@ -406,8 +406,7 @@ namespace bts { namespace blockchain {
             case edge_object:
             {
                 ilog("@n it is an edge");
-                auto edge = obj.as<edge_record>();
-                store_edge_record( edge );
+                store_edge_record( obj );
                 break;
             }
             case base_object:
@@ -416,45 +415,90 @@ namespace bts { namespace blockchain {
                 objects[obj._id] = obj;
                 break;
             }
+            case site_object:
+            {
+                ilog("@n it is a site");
+                auto site = obj.as<site_record>();
+                store_site_record( site );
+                break;
+            }
             default:
                 break;
         }
 
    }
 
-    void                       pending_chain_state::store_edge_record( const edge_record& edge )
+    void                       pending_chain_state::store_edge_record( const object_record& edge )
     {
-        edge_index[ edge.index_key() ] = edge._id;
-        reverse_edge_index[ edge.reverse_index_key() ] = edge._id;
+        ilog("@n existing edge before storing edge in pending state:");
+        ilog("@n      as an object: ${o}", ("o", objects[edge._id]));
+        ilog("@n      as an edge: ${e}", ("e", objects[edge._id].as<edge_record>()));
+        auto edge_data = edge.as<edge_record>();
+        edge_index[ edge_data.index_key() ] = edge._id;
+        reverse_edge_index[ edge_data.reverse_index_key() ] = edge._id;
         objects[edge._id] = edge;
         ilog("@n after storing edge in pending state:");
         ilog("@n      as an object: ${o}", ("o", objects[edge._id]));
         ilog("@n      as an edge: ${e}", ("e", objects[edge._id].as<edge_record>()));
     }
 
-    oedge_record               pending_chain_state::get_edge( const object_id_type& from,
+    void                       pending_chain_state::store_site_record( const site_record& site )
+    {
+        FC_ASSERT(!"unimplemented");
+        /*
+        site_index[site.site_name] = site;
+        objects[site._id] = site;
+        ilog("@n after storing site in pending state:");
+        ilog("@n      as an object: ${o}", ("o", objects[site._id]));
+        ilog("@n      as a site: ${s}", ("s", objects[site._id].as<site_record>()));
+        */
+    }
+
+    oobject_record               pending_chain_state::get_edge( const object_id_type& from,
                                          const object_id_type& to,
                                          const string& name )const
     {
-        edge_index_key key;
-        key.from = from; key.to = to; key.name = name;
+        edge_index_key key(from, to, name);
         auto itr = edge_index.find( key );
         if( itr == edge_index.end() )
-            return oedge_record();
+            return oobject_record();
+        auto oobj = get_object_record( itr->second );
+        return oobj;
+        /*
         auto obj = get_object_record( itr->second );
         FC_ASSERT(obj.valid(), "This edge was in the index, but it has no object record");
         return obj->as<edge_record>();
+        */
     }
-    map<string, edge_record>   pending_chain_state::get_edges( const object_id_type& from,
+    map<string, object_record>   pending_chain_state::get_edges( const object_id_type& from,
                                           const object_id_type& to )const
     {
         FC_ASSERT(!"unimplemented!");
     }
-    map<object_id_type, map<string, edge_record>> pending_chain_state::get_edges( const object_id_type& from )const
+    map<object_id_type, map<string, object_record>> pending_chain_state::get_edges( const object_id_type& from )const
     {
         FC_ASSERT(!"unimplemented!");
     }
 
+
+
+   osite_record  pending_chain_state::lookup_site( const string& site_name)const
+   { try {
+       auto prev_state = _prev_state.lock();
+       auto itr = site_index.find( site_name );
+       if( itr != site_index.end() )
+       {
+           return itr->second;
+           /*
+           auto site = get_object_record( itr->second );
+           FC_ASSERT( site.valid(), "A new index was in the pending chain state, but the record was not there" );
+           return site->as<site_record>();
+           */
+       }
+       if( prev_state )
+           return prev_state->lookup_site( site_name );
+       return osite_record();
+   } FC_CAPTURE_AND_RETHROW( (site_name) ) }
 
 
    fc::variant pending_chain_state::get_property( chain_property_enum property_id )const
