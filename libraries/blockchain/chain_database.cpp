@@ -3493,9 +3493,17 @@ namespace bts { namespace blockchain {
 
            if (asset_id != balance.asset_id() )
                continue;
+           
+           const auto t = balance.condition.type;
+           
+           if( t == withdraw_signature_type || t == withdraw_vesting_type || t == withdraw_multisig_type)
+           {
+               const auto owner = balance.owner();
+               
+               snapshot[owner] += balance.balance;
+               total += balance.balance;
+           }
 
-           snapshot[balance.id()] += balance.balance;
-           total += balance.balance;
        }
 
        // 2. ask balance        
